@@ -35,10 +35,13 @@ CHUNK_SIZE = 500        # max characters per chunk
 CHUNK_OVERLAP = 50      # characters shared between consecutive chunks
 
 # ============================================================================
-# VALIDATION: Ensure all required credentials are set
+# VALIDATION HELPERS: Validate required credentials only when needed
 # ============================================================================
-if not GROQ_API_KEY:
-    raise RuntimeError(
-        "GROQ_API_KEY must be set in .env or environment. "
-        "Without it, RAG generation and chat endpoints will fail."
-    )
+def require_groq_api_key():
+    """Return the configured Groq API key or raise when Groq features are used."""
+    if not GROQ_API_KEY:
+        raise RuntimeError(
+            "GROQ_API_KEY must be set in .env or environment. "
+            "Without it, RAG generation and chat endpoints will fail."
+        )
+    return GROQ_API_KEY
