@@ -18,6 +18,12 @@ class EmbeddingService:
                     "sentence-transformers is not installed. Install backend dependencies first."
                 ) from exc
 
+            # Load HF token if set (for private models)
+            import os as _os
+            from app.core.config import HF_TOKEN
+            if HF_TOKEN:
+                _os.environ["HUGGINGFACE_HUB_TOKEN"] = HF_TOKEN
+            
             self._model = SentenceTransformer(self.model_name)
         return self._model
 
