@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from app.api.upload import router as upload_router
 from app.api.chat import router as chat_router
 from app.api.summarize import router as summarize_router
+from app.api.files import router as files_router
 
 
 logging.basicConfig(
@@ -19,6 +20,7 @@ app = FastAPI(
 app.include_router(upload_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(summarize_router, prefix="/api")
+app.include_router(files_router, prefix="/api")
 
 
 @app.get("/")

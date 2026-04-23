@@ -3,8 +3,10 @@ import os
 import uuid
 from typing import AsyncGenerator, List
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
+from typing import Optional
 
 from app.core.config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB, UPLOAD_DIR
 from app.core.rag_service import get_rag_service
@@ -32,7 +34,7 @@ async def _read_upload(file: UploadFile) -> tuple:
     return file.filename, ext, content
 
 
-def _process_content(filename: str, ext: str, content: bytes) -> dict:
+def _process_content(filename: str, ext: str, content: bytes, username: str = "") -> dict:
     """Save, parse, clean and chunk already-read file content."""
     size_mb = len(content) / (1024 * 1024)
     if size_mb > MAX_FILE_SIZE_MB:
@@ -42,6 +44,19 @@ def _process_content(filename: str, ext: str, content: bytes) -> dict:
         )
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    # Aynı kullanıcıdan aynı isimli dosya varsa önce sil
+    service = get_rag_service()
+    if username:
+        store = service.vector_store
+        existing = store.fetch_all(filters={"$and": [
+            {"username": {"$eq": username}},
+            {"source_file": {"$eq": filename}},
+        ]})
+        old_ids = existing.get("ids") or []
+        if old_ids:
+            store.collection().delete(ids=old_ids)
+
     file_id = str(uuid.uuid4())
     save_path = os.path.join(UPLOAD_DIR, f"{file_id}.{ext}")
     with open(save_path, "wb") as f:
@@ -55,11 +70,11 @@ def _process_content(filename: str, ext: str, content: bytes) -> dict:
             "file_id": file_id,
             "source_file": filename,
             "file_type": ext,
+            "username": username,
         },
     )
 
     if chunks:
-        service = get_rag_service()
         service.index_chunks(chunks)
 
     return {
@@ -75,7 +90,10 @@ def _process_content(filename: str, ext: str, content: bytes) -> dict:
 
 
 @router.post("/upload")
-async def upload_documents(files: List[UploadFile] = File(...)):
+async def upload_documents(
+    files: List[UploadFile] = File(...),
+    username: Optional[str] = Form(default=""),
+):
     """
     Upload one or more documents (PDF, DOCX, TXT, DOC).
     Returns all results at once after processing every file.
@@ -87,7 +105,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
     for file in files:
         try:
             filename, ext, content = await _read_upload(file)
-            result = _process_content(filename, ext, content)
+            result = _process_content(filename, ext, content, username=username or "")
         except RuntimeError as e:
             raise HTTPException(status_code=422, detail=str(e))
         uploaded.append(result)
@@ -149,3 +167,25 @@ async def upload_documents_stream(files: List[UploadFile] = File(...)):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class DeleteRequest(BaseModel):
+    file_id: str
+
+
+@router.delete("/upload")
+def delete_document(request: DeleteRequest):
+    """Remove a document's chunks from the vector store and delete the saved file."""
+    service = get_rag_service()
+    deleted_chunks = service.vector_store.delete_by_file_id(request.file_id)
+
+    # Remove the physical file (any extension)
+    import glob
+    pattern = os.path.join(UPLOAD_DIR, f"{request.file_id}.*")
+    for path in glob.glob(pattern):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+    return {"deleted_chunks": deleted_chunks, "file_id": request.file_id}

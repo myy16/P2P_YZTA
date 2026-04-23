@@ -14,6 +14,7 @@ class SummarizeRequest(BaseModel):
     file_id: Optional[str] = None
     source_file: Optional[str] = None
     max_chunks: int = Field(default=8, ge=1, le=20)
+    username: Optional[str] = None
 
 
 @router.post("/summarize")
@@ -24,6 +25,7 @@ def summarize(request: SummarizeRequest):
             file_id=request.file_id,
             source_file=request.source_file,
             max_chunks=request.max_chunks,
+            username=request.username if request.username else None,
         )
     except RuntimeError as exc:
         logger.warning("Summarize request failed due to runtime dependency issue: %s", exc)

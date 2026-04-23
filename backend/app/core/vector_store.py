@@ -62,6 +62,7 @@ class ChromaStore:
                 "chunk_index": chunk.get("chunk_index", 0),
                 "total_chunks": chunk.get("total_chunks", len(chunks)),
                 "char_count": chunk.get("char_count", len(chunk.get("text", ""))),
+                "username": chunk.get("username", ""),
             }
             metadatas.append(self._sanitize_metadata(metadata))
 
@@ -90,6 +91,13 @@ class ChromaStore:
         if filters:
             kwargs["where"] = filters
         return self.collection().get(**kwargs)
+
+    def delete_by_file_id(self, file_id: str) -> int:
+        results = self.collection().get(where={"file_id": file_id}, include=[])
+        ids = results.get("ids", [])
+        if ids:
+            self.collection().delete(ids=ids)
+        return len(ids)
 
 
 _STORE: Optional[ChromaStore] = None

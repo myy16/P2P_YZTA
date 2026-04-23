@@ -52,6 +52,7 @@ def chunk_text(
             "file_id": metadata.get("file_id", ""),
             "source_file": metadata.get("source_file", ""),
             "file_type": metadata.get("file_type", ""),
+            "username": metadata.get("username", ""),
             "chunk_index": idx,
             "total_chunks": total,
             "text": chunk,

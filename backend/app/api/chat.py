@@ -18,6 +18,7 @@ class ChatRequest(BaseModel):
     file_id: Optional[str] = None
     source_file: Optional[str] = None
     top_k: int = Field(default=CHROMA_TOP_K, ge=1, le=20)
+    username: Optional[str] = None
 
 
 @router.post("/chat")
@@ -29,6 +30,7 @@ def chat(request: ChatRequest):
             top_k=request.top_k,
             file_id=request.file_id,
             source_file=request.source_file,
+            username=request.username if request.username else None,
         )
     except RuntimeError as exc:
         logger.warning("Chat request failed due to runtime dependency issue: %s", exc)
@@ -40,13 +42,6 @@ def chat(request: ChatRequest):
 
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
-    """Stream chat response with Server-Sent Events (SSE).
-    
-    Response format (newline-delimited SSE):
-    data: {"type": "token", "content": "word"}
-    
-    data: {"type": "sources", "content": [{...}, ...]}
-    """
     try:
         service = get_rag_service()
         def safe_stream():
@@ -56,6 +51,7 @@ async def chat_stream(request: ChatRequest):
                     top_k=request.top_k,
                     file_id=request.file_id,
                     source_file=request.source_file,
+                    username=request.username if request.username else None,
                 )
             except RuntimeError as exc:
                 logger.warning("Streaming chat failed due to runtime dependency issue: %s", exc)

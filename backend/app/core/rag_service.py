@@ -43,9 +43,10 @@ class RagService:
         top_k: int = CHROMA_TOP_K,
         file_id: Optional[str] = None,
         source_file: Optional[str] = None,
+        username: Optional[str] = None,
     ) -> Dict[str, Any]:
         try:
-            chunks = self.retriever.retrieve(question, top_k=top_k, file_id=file_id, source_file=source_file)
+            chunks = self.retriever.retrieve(question, top_k=top_k, file_id=file_id, source_file=source_file, username=username or None)
         except Exception as exc:
             logger.exception("Retriever failed while answering question.")
             raise RuntimeError("Failed to retrieve context for question.") from exc
@@ -76,15 +77,16 @@ class RagService:
         top_k: int = CHROMA_TOP_K,
         file_id: Optional[str] = None,
         source_file: Optional[str] = None,
+        username: Optional[str] = None,
     ):
         """Answer question with streaming response. Yields SSE events.
-        
+
         Stream format (one JSON per line):
         data: {"type": "token", "content": "text"}
         data: {"type": "sources", "content": [...]}
         """
         try:
-            chunks = self.retriever.retrieve(question, top_k=top_k, file_id=file_id, source_file=source_file)
+            chunks = self.retriever.retrieve(question, top_k=top_k, file_id=file_id, source_file=source_file, username=username or None)
         except Exception as exc:
             logger.exception("Retriever failed while preparing streaming answer.")
             raise RuntimeError("Failed to retrieve context for streaming question.") from exc
@@ -117,9 +119,10 @@ class RagService:
         file_id: Optional[str] = None,
         source_file: Optional[str] = None,
         max_chunks: int = 8,
+        username: Optional[str] = None,
     ) -> Dict[str, Any]:
         try:
-            chunks = self.retriever.fetch_documents(file_id=file_id, source_file=source_file)
+            chunks = self.retriever.fetch_documents(file_id=file_id, source_file=source_file, username=username or None)
         except Exception as exc:
             logger.exception("Retriever failed while summarizing documents.")
             raise RuntimeError("Failed to fetch documents for summarization.") from exc

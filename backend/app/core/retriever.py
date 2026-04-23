@@ -13,25 +13,47 @@ class Retriever:
         self.vector_store = get_vector_store()
 
     @staticmethod
-    def _build_filters(file_id: Optional[str] = None, source_file: Optional[str] = None) -> Dict[str, Any]:
-        filters: Dict[str, Any] = {}
+    def _build_filters(
+        file_id: Optional[str] = None,
+        source_file: Optional[str] = None,
+        username: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        conditions = []
         if file_id:
-            filters["file_id"] = file_id
+            conditions.append({"file_id": {"$eq": file_id}})
         if source_file:
-            filters["source_file"] = source_file
-        return filters
+            conditions.append({"source_file": {"$eq": source_file}})
+        if username:
+            conditions.append({"username": {"$eq": username}})
+        if len(conditions) == 1:
+            return conditions[0]
+        if len(conditions) > 1:
+            return {"$and": conditions}
+        return {}
 
-    def retrieve(self, query: str, top_k: int = CHROMA_TOP_K, file_id: Optional[str] = None, source_file: Optional[str] = None) -> List[Dict[str, Any]]:
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = CHROMA_TOP_K,
+        file_id: Optional[str] = None,
+        source_file: Optional[str] = None,
+        username: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         query_embedding = self.embedding_service.embed_query(query)
         if not query_embedding:
             return []
 
-        filters = self._build_filters(file_id=file_id, source_file=source_file)
+        filters = self._build_filters(file_id=file_id, source_file=source_file, username=username)
         results = self.vector_store.query(query_embedding=query_embedding, top_k=top_k, filters=filters or None)
         return self._format_results(results)
 
-    def fetch_documents(self, file_id: Optional[str] = None, source_file: Optional[str] = None) -> List[Dict[str, Any]]:
-        filters = self._build_filters(file_id=file_id, source_file=source_file)
+    def fetch_documents(
+        self,
+        file_id: Optional[str] = None,
+        source_file: Optional[str] = None,
+        username: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        filters = self._build_filters(file_id=file_id, source_file=source_file, username=username)
         results = self.vector_store.fetch_all(filters=filters or None)
         return self._format_fetched_documents(results)
 

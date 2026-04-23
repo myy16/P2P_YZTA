@@ -16,6 +16,19 @@ services:
       - RAG_DATA_DIR=/app/data
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: p2p_yzta_frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - BASE_URL=http://backend:8000/api
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   uploads_data:
   chroma_data:
