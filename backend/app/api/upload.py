@@ -1,7 +1,8 @@
+import asyncio
 import json
 import os
 import uuid
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, Dict, Iterator, List
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -89,6 +90,69 @@ def _process_content(filename: str, ext: str, content: bytes, username: str = ""
     }
 
 
+def _stream_process_content_events(filename: str, ext: str, content: bytes, username: str = "") -> Iterator[Dict[str, object]]:
+    """Yield progress events for upload/parse/index stages."""
+    size_mb = len(content) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{filename}' exceeds the {MAX_FILE_SIZE_MB} MB size limit.",
+        )
+
+    yield {"event": "stage", "stage": "Dosya kaydediliyor", "filename": filename}
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    service = get_rag_service()
+    if username:
+        store = service.vector_store
+        existing = store.fetch_all(filters={"$and": [
+            {"username": {"$eq": username}},
+            {"source_file": {"$eq": filename}},
+        ]})
+        old_ids = existing.get("ids") or []
+        if old_ids:
+            store.collection().delete(ids=old_ids)
+
+    file_id = str(uuid.uuid4())
+    save_path = os.path.join(UPLOAD_DIR, f"{file_id}.{ext}")
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    yield {"event": "stage", "stage": "Metin çıkarılıyor", "filename": filename}
+    raw_text = parse_document(save_path, ext)
+
+    yield {"event": "stage", "stage": "Temizleniyor", "filename": filename}
+    cleaned_text = clean_text(raw_text)
+
+    yield {"event": "stage", "stage": "Chunking yapılıyor", "filename": filename}
+    chunks = chunk_text(
+        text=cleaned_text,
+        metadata={
+            "file_id": file_id,
+            "source_file": filename,
+            "file_type": ext,
+            "username": username,
+        },
+    )
+
+    if chunks:
+        yield {"event": "stage", "stage": "Embedding ve indeksleme", "filename": filename}
+        service.index_chunks(chunks)
+
+    result = {
+        "file_id": file_id,
+        "original_name": filename,
+        "file_type": ext,
+        "size_mb": round(size_mb, 3),
+        "saved_path": save_path,
+        "extracted_text": cleaned_text,
+        "chunks": chunks,
+        "chunk_count": len(chunks),
+    }
+    yield {"event": "file_done", "file": result, "filename": filename}
+
+
 @router.post("/upload")
 async def upload_documents(
     files: List[UploadFile] = File(...),
@@ -117,7 +181,10 @@ async def upload_documents(
 
 
 @router.post("/upload/stream")
-async def upload_documents_stream(files: List[UploadFile] = File(...)):
+async def upload_documents_stream(
+    files: List[UploadFile] = File(...),
+    username: Optional[str] = Form(default=""),
+):
     """
     Upload one or more documents with Server-Sent Events (SSE) streaming.
 
@@ -148,10 +215,12 @@ async def upload_documents_stream(files: List[UploadFile] = File(...)):
         count = 0
         for filename, ext, content in file_payloads:
             try:
-                result = _process_content(filename, ext, content)
-                payload = json.dumps({"event": "file_done", "file": result}, ensure_ascii=False)
-                yield f"data: {payload}\n\n"
-                count += 1
+                for event in _stream_process_content_events(filename, ext, content, username=username or ""):
+                    payload = json.dumps(event, ensure_ascii=False)
+                    yield f"data: {payload}\n\n"
+                    if event.get("event") == "file_done":
+                        count += 1
+                    await asyncio.sleep(0)
             except (HTTPException, RuntimeError) as exc:
                 detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
                 payload = json.dumps(
@@ -159,8 +228,10 @@ async def upload_documents_stream(files: List[UploadFile] = File(...)):
                     ensure_ascii=False,
                 )
                 yield f"data: {payload}\n\n"
+                await asyncio.sleep(0)
 
         yield f"data: {json.dumps({'event': 'done', 'count': count})}\n\n"
+        await asyncio.sleep(0)
 
     return StreamingResponse(
         event_generator(),

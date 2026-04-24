@@ -62,18 +62,50 @@ with st.sidebar:
     if st.button("Yükle ve İndeksle", disabled=not uploaded_files, use_container_width=True):
         files_to_send = [("files", (f.name, f.getvalue(), f.type)) for f in uploaded_files]
         try:
+            stage_box = st.empty()
+            progress_box = st.empty()
+            progress_bar = progress_box.progress(0.0)
+            completed = 0
+            total_files = len(uploaded_files)
+            uploaded_results = []
+
             with st.spinner("İşleniyor..."):
-                resp = requests.post(
-                    f"{BASE_URL}/upload",
+                with requests.post(
+                    f"{BASE_URL}/upload/stream",
                     files=files_to_send,
                     data={"username": st.session_state.get("username", "")},
-                )
-            if resp.status_code == 200:
-                data = resp.json()
+                    stream=True,
+                    timeout=120,
+                ) as resp:
+                    for line in resp.iter_lines():
+                        if not line:
+                            continue
+                        line = line.decode("utf-8")
+                        if not line.startswith("data:"):
+                            continue
+                        raw = line[len("data:"):].strip()
+                        try:
+                            chunk = json.loads(raw)
+                        except Exception:
+                            continue
+
+                        event_type = chunk.get("event")
+                        if event_type == "stage":
+                            stage_box.info(f"**{chunk.get('filename', '')}**: {chunk.get('stage', '')}")
+                        elif event_type == "file_done":
+                            uploaded_results.append(chunk.get("file", {}))
+                            completed += 1
+                            progress_bar.progress(min(completed / total_files, 1.0))
+                        elif event_type == "error":
+                            stage_box.error(f"{chunk.get('filename', '')}: {chunk.get('detail', '')}")
+                        elif event_type == "done":
+                            progress_bar.progress(1.0)
+
+            if uploaded_results:
                 existing_names = {f["original_name"] for f in st.session_state.uploaded_files_info}
                 added = 0
-                for fi in data["uploaded_files"]:
-                    if fi["original_name"] not in existing_names:
+                for fi in uploaded_results:
+                    if fi.get("original_name") not in existing_names:
                         st.session_state.uploaded_files_info.append({
                             "file_id": fi["file_id"],
                             "original_name": fi["original_name"],
@@ -84,7 +116,7 @@ with st.sidebar:
                 st.success(f"{added} dosya yüklendi!")
                 st.rerun()
             else:
-                st.error(f"Hata {resp.status_code}: {resp.text[:200]}")
+                st.warning("Yükleme tamamlandı ama işlenecek dosya döndürülmedi.")
         except requests.exceptions.ConnectionError:
             st.error("Backend'e ulaşılamadı (port 8000).")
 

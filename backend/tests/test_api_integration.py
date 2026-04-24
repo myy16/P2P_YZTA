@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.api.chat import router as chat_router
+from app.api.upload import router as upload_router
 from app.api.summarize import router as summarize_router
 
 
@@ -40,6 +41,7 @@ class FakeRagService:
 
 def create_test_client():
     app = FastAPI()
+    app.include_router(upload_router, prefix="/api")
     app.include_router(chat_router, prefix="/api")
     app.include_router(summarize_router, prefix="/api")
     return TestClient(app)
@@ -58,6 +60,38 @@ def test_chat_endpoint_returns_answer(monkeypatch):
     data = response.json()
     assert data["answer"] == "yanit:Belge ne anlatıyor?"
     assert data["sources"][0]["source_file"] == "rapor.pdf"
+
+
+def test_upload_stream_emits_stage_and_done_events(monkeypatch):
+    monkeypatch.setattr("app.api.upload.parse_document", lambda path, ext: "Temiz metin")
+    monkeypatch.setattr("app.api.upload.clean_text", lambda text: text)
+    monkeypatch.setattr(
+        "app.api.upload.chunk_text",
+        lambda text, metadata: [{"chunk_id": "1", "text": text, "metadata": metadata, "chunk_index": 0, "source_file": metadata["source_file"], "file_id": metadata["file_id"]}],
+    )
+
+    class UploadService:
+        def __init__(self):
+            self.vector_store = type("Store", (), {"fetch_all": lambda self, filters=None: {"ids": []}, "collection": lambda self: type("Col", (), {"delete": lambda self, ids=None: None})()})()
+
+        def index_chunks(self, chunks):
+            return len(chunks)
+
+    monkeypatch.setattr("app.api.upload.get_rag_service", lambda: UploadService())
+    client = create_test_client()
+
+    response = client.post(
+        "/api/upload/stream",
+        files={"files": ("rapor.txt", b"merhaba dunya", "text/plain")},
+        data={"username": "test-user"},
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert '"event": "stage"' in body
+    assert '"stage": "Metin çıkarılıyor"' in body
+    assert '"event": "file_done"' in body
+    assert '"event": "done"' in body
 
 
 def test_chat_endpoint_maps_runtime_error_to_503(monkeypatch):
