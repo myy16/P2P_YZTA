@@ -3,6 +3,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # Use Aliyun mirror for faster PyPI access (especially in Asia)
+        # For Europe/US, use: https://mirrors.aliyun.com/pypi/simple
+        # For fallback: https://pypi.org/simple
+        PIP_INDEX_URL: https://pypi.org/simple
+        PIP_TIMEOUT: 120
     container_name: p2p_yzta_backend
     ports:
       - "8000:8000"
@@ -14,6 +20,16 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - RAG_DATA_DIR=/app/data
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - NO_PROXY=localhost,127.0.0.1,::1,pypi.org,*.pypi.org,api.groq.com,*.groq.com
+      # DNS settings for reliable external API access
+      # Use Google DNS (8.8.8.8, 8.8.4.4) as fallback for api.groq.com resolution
+      - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+      - 8.8.4.4
     restart: unless-stopped
 
   frontend:

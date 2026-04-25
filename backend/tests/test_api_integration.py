@@ -17,7 +17,7 @@ from app.api.summarize import router as summarize_router
 
 
 class FakeRagService:
-    def answer_question(self, question, top_k=5, file_id=None, source_file=None):
+    def answer_question(self, question, top_k=5, file_id=None, source_file=None, username=None):
         return {
             "answer": f"yanit:{question}",
             "sources": [{"source_file": source_file or "doc.pdf", "chunk_index": 0}],
@@ -25,12 +25,12 @@ class FakeRagService:
             "model": "test-model",
         }
 
-    def answer_question_stream(self, question, top_k=5, file_id=None, source_file=None):
+    def answer_question_stream(self, question, top_k=5, file_id=None, source_file=None, username=None):
         yield 'data: {"type":"token","content":"Merhaba"}\n\n'
         yield 'data: {"type":"token","content":" dunya"}\n\n'
         yield 'data: {"type":"sources","content":[{"source_file":"doc.pdf","chunk_index":0}]}\n\n'
 
-    def summarize_documents(self, file_id=None, source_file=None, max_chunks=8):
+    def summarize_documents(self, file_id=None, source_file=None, max_chunks=8, username=None):
         return {
             "summary": "kisa ozet",
             "sources": [{"source_file": source_file or "doc.pdf", "chunk_index": 0}],

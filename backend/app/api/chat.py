@@ -44,23 +44,23 @@ def chat(request: ChatRequest):
 async def chat_stream(request: ChatRequest):
     try:
         service = get_rag_service()
-        def safe_stream():
+        async def safe_stream():
             try:
-                yield from service.answer_question_stream(
+                # Use a timeout-aware iteration if needed, but for now simple manual yield
+                for event in service.answer_question_stream(
                     question=request.question,
                     top_k=request.top_k,
                     file_id=request.file_id,
                     source_file=request.source_file,
                     username=request.username if request.username else None,
-                )
+                ):
+                    yield event
             except RuntimeError as exc:
-                logger.warning("Streaming chat failed due to runtime dependency issue: %s", exc)
-                payload = json.dumps({"type": "error", "detail": str(exc)})
-                yield f"data: {payload}\n\n"
-            except Exception:
-                logger.exception("Unexpected error while streaming /api/chat/stream")
-                payload = json.dumps({"type": "error", "detail": "Internal server error."})
-                yield f"data: {payload}\n\n"
+                logger.warning("Streaming chat failed: %s", exc)
+                yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            except Exception as exc:
+                logger.exception("Unexpected error while streaming")
+                yield f"data: {json.dumps({'type': 'error', 'detail': 'Internal server error.'})}\n\n"
 
         return StreamingResponse(safe_stream(), media_type="text/event-stream")
     except RuntimeError as exc:

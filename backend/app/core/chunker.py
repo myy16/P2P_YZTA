@@ -9,35 +9,21 @@ def chunk_text(
     metadata: dict,
     chunk_size: int = CHUNK_SIZE,
     chunk_overlap: int = CHUNK_OVERLAP,
+    context_prefix: str = "",
 ) -> List[dict]:
     """
     Split cleaned text into overlapping chunks using recursive character splitting.
-
-    Splitting priority (tries each separator in order until chunks fit):
-      1. Double newline  (paragraph boundary)
-      2. Single newline  (line boundary)
-      3. Period + space  (sentence boundary)
-      4. Single space    (word boundary)
-      5. Character-level (last resort)
-
-    Each chunk carries source metadata for citation and retrieval tracing.
+    If context_prefix is provided, it is prepended to every chunk to maintain global context.
 
     Args:
-        text:          Cleaned text from clean_text().
-        metadata:      Dict with at minimum: file_id, source_file, file_type.
-        chunk_size:    Max characters per chunk (default: CHUNK_SIZE from config).
-        chunk_overlap: Characters shared with the next chunk (default: CHUNK_OVERLAP).
+        text:           Cleaned text from clean_text().
+        metadata:       Dict with at minimum: file_id, source_file, file_type.
+        chunk_size:     Max characters per chunk (default: CHUNK_SIZE from config).
+        chunk_overlap:  Characters shared with the next chunk (default: CHUNK_OVERLAP).
+        context_prefix: Global document context to prepend to each chunk.
 
     Returns:
-        List of chunk dicts, each containing:
-          - chunk_id:     Unique UUID for this chunk
-          - file_id:      Source file UUID
-          - source_file:  Original filename (e.g. "rapor.pdf")
-          - file_type:    File extension (e.g. "pdf")
-          - chunk_index:  Zero-based position in the sequence
-          - total_chunks: Total number of chunks produced from this document
-          - text:         Chunk content
-          - char_count:   len(text)
+        List of chunk dicts.
     """
     if not text or not text.strip():
         return []
@@ -55,8 +41,9 @@ def chunk_text(
             "username": metadata.get("username", ""),
             "chunk_index": idx,
             "total_chunks": total,
-            "text": chunk,
+            "text": f"{context_prefix}\n\n{chunk}" if context_prefix else chunk,
             "char_count": len(chunk),
+            "has_context": bool(context_prefix),
         }
         for idx, chunk in enumerate(overlapped)
     ]

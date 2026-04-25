@@ -17,6 +17,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
+@app.on_event("startup")
+async def startup_event():
+    from app.core.embeddings import get_embedding_service
+    get_embedding_service().pre_warm()
+
 app.include_router(upload_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(summarize_router, prefix="/api")
@@ -25,4 +30,8 @@ app.include_router(files_router, prefix="/api")
 
 @app.get("/")
 def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "message": "P2P YZTA Backend is running."}
+
+@app.get("/api")
+def api_root():
+    return {"status": "ok", "message": "API prefix is active. Use /api/chat or /docs for more info."}

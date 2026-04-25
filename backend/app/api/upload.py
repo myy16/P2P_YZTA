@@ -76,7 +76,7 @@ def _process_content(filename: str, ext: str, content: bytes, username: str = ""
     )
 
     if chunks:
-        service.index_chunks(chunks)
+        service.index_chunks(chunks, full_text=cleaned_text)
 
     return {
         "file_id": file_id,
@@ -138,7 +138,7 @@ def _stream_process_content_events(filename: str, ext: str, content: bytes, user
 
     if chunks:
         yield {"event": "stage", "stage": "Embedding ve indeksleme", "filename": filename}
-        service.index_chunks(chunks)
+        service.index_chunks(chunks, full_text=cleaned_text)
 
     result = {
         "file_id": file_id,

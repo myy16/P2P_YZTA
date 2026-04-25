@@ -315,3 +315,319 @@ Bu format, dokümanların nasıl işlendiğini, vektörleştiğini ve yapay zeka
 (style) chat : apply scrolling effect to chat window for long conversations
 (docs) readme : add architecture diagram and local setup instructions
 ```
+
+---
+
+## Sorun Giderme (Troubleshooting)
+
+### 1. Docker Build Timeout: `pip install` PyPI'dan dosya indiremedi
+
+**Belirtiler:**
+```
+ERROR: Could not find a version that satisfies the requirement fastapi==0.115.0
+fatal error in launcher: Unable to create process using '"C:\Python39\python.exe" "C:\Python39\Scripts\pip.exe" ...
+```
+
+**Çözüm (tercih sırasına göre):**
+
+**Seçenek A:** docker-compose.yml'de PyPI mirror kullan (hızlı)
+```bash
+# Linux/macOS
+docker compose up --build
+
+# Windows MSYS2
+cd backend
+docker build --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple -t p2p_backend .
+```
+
+**Seçenek B:** Pip timeout'ını ve retry'ı artır
+```dockerfile
+RUN pip install --no-cache-dir \
+    --retries 5 \
+    --default-timeout 120 \
+    -r requirements.txt
+```
+
+**Seçenek C:** Pre-built wheels cache'le (en güvenilir)
+```dockerfile
+# Stage 1: Download wheels
+RUN mkdir -p /wheels && \
+    pip download --no-cache-dir -r requirements.txt -d /wheels
+
+# Stage 2: Install from cache
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir --no-index --find-links /wheels -r requirements.txt
+```
+
+---
+
+### 2. Chat Stream Timeout: Groq API'ye bağlanamıyor
+
+**Belirtiler:**
+```
+[ERROR] RuntimeError: HTTP 408 Timeout connecting to api.groq.com
+OR
+[INFO] Fallback answer: "İlgili bağlam bulunamadı." (confidence: 0.0)
+```
+
+**Sebep:**
+- Docker container'ı `api.groq.com`'a bağlanamıyor (DNS caching, egress rules, proxy)
+- Ana bilgisayardan bağlantı tamam (`curl -I https://api.groq.com` → 401) ama container'dan timeout
+
+**Çözüm (tercih sırasına göre):**
+
+**Seçenek A:** DNS sunucularını override et (hızlı)
+
+Dosya: `docker-compose.yml`
+```yaml
+services:
+  backend:
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+      - 8.8.4.4
+```
+
+Sonra:
+```bash
+docker compose down
+docker compose up --build
+```
+
+**Seçenek B:** Zaman aşımı süresi ayarı (uzun yanıtlar için)
+
+Dosya: `.env`
+```
+LLM_TIMEOUT_SECONDS=90
+```
+
+**Seçenek C:** Yerel LLM fallback (en güvenilir, gelecek sürüm)
+```bash
+# Llama 2 local sunucusu dağıt (ollama veya llama.cpp)
+docker run -d --name ollama ollama/ollama
+# rag_service.py'de fallback olarak kullan
+```
+
+**Seçenek D:** Bağlantı testi yapılı container (debug)
+```bash
+docker exec p2p_yzta_backend /bin/sh -c "curl -v https://api.groq.com"
+```
+
+Eğer timeout alırsan, Docker Desktop'un Network ayarlarını kontrol et:
+- **Windows:** Docker Desktop → Settings → Resources → Network → DNS (8.8.8.8 ekle)
+- **macOS:** Similar path
+
+---
+
+### 3. Test Hatası: `FakeRetriever` parametre uyuşmaması
+
+**Belirtiler:**
+```
+TypeError: retrieve() missing 1 required positional argument: 'username'
+OR
+TypeError: _call_groq() missing required argument: 'system_prompt'
+```
+
+**Çözüm:**
+
+Dosya: `backend/tests/test_rag_service.py`
+
+✅ Zaten düzeltilmiş (2026-04-25):
+- `FakeRetriever.retrieve()` artık `username=None` parametresini kabul ediyor
+- `FakeRetriever.fetch_documents()` artık `username=None` parametresini kabul ediyor
+- Test mock'ları `_call_groq` için `system_prompt=None` parametresini kabul ediyor
+
+Testleri çalıştır:
+```bash
+cd backend
+python -m pytest tests/test_rag_service.py -v
+```
+
+---
+
+### 4. Embedding Modeli İndirilemiyor
+
+**Belirtiler:**
+```
+[WARNING] sentence-transformers model not available; using fallback embeddings
+```
+
+**Sebep:**
+- sentence-transformers model indirilemiyor (HuggingFace bağlantı sorunu, TLS hatası)
+- Offline ortamda veya kısıtlı ağda çalışıyor
+
+**Özellikleri:**
+✅ **Garanti:** Yedek embedding servisi deterministic hashing kullanır
+- Yükleme başarısız olmaz
+- Hibrit retrieval (lexical+semantic) çalışır
+
+**Performans notası:**
+- sentence-transformers: ~0.8 F1 score (semantic accuracy)
+- Fallback hashing: ~0.6 F1 score (lexical + frequency-based)
+
+Yedek embedding'in performansını iyileştir:
+```python
+# backend/app/core/embeddings.py
+# Fallback embedding dim'i artır (384 → 768)
+# Token weight'ını optimize et
+```
+
+---
+
+### 5. ChromaDB Verisi Kayboldu
+
+**Çözüm:**
+
+```bash
+# Kalıcı veri nerede?
+# Yerel: backend/data/chroma/
+# Docker: Named volume "chroma_data"
+
+# Kalıcı veriyi kontrol et
+docker volume ls | grep chroma
+docker inspect chroma_data
+
+# Veriyi temizle (sıfırla)
+docker compose down -v  # Tüm volume'ları sil
+docker compose up       # Yeni baştan başla
+```
+
+---
+
+### 6. Groq API Key Hatasız Ama Timeout
+
+**Belirtiler:**
+```
+GROQ_API_KEY set ✓
+/api/chat/stream calls made ✓
+But responses timeout after 60 seconds
+```
+
+**Tanı komutları:**
+
+```bash
+# 1. API Key doğru mu?
+docker exec p2p_yzta_backend env | grep GROQ
+
+# 2. Groq'a ulaşılabiliyor mu?
+docker exec p2p_yzta_backend curl -I https://api.groq.com
+# Expected: HTTP/1.1 401 Unauthorized (iyi)
+# Actual: 000 curl: operation timeout (kötü → DNS/egress sorunu)
+
+# 3. Backend log'ları kontrol et
+docker logs p2p_yzta_backend | tail -20
+
+# 4. Groq streaming test et
+curl -X POST http://localhost:8000/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Merhaba"}' \
+  -N
+# Eğer timeout alırsan → Docker network konfigürasyonu kontrol et
+```
+
+---
+
+### 7. Frontend (Streamlit) Backend'e Bağlanamıyor
+
+**Belirtiler:**
+```
+ConnectionError: Cannot connect to http://backend:8000/api
+```
+
+**Çözüm:**
+
+```bash
+# 1. Container'lar çalışıyor mu?
+docker ps
+# p2p_yzta_backend ve p2p_yzta_frontend görülmeli
+
+# 2. Backend sağlıklı mı?
+curl http://localhost:8000/
+# Expected: 200 OK
+
+# 3. Network connectivity
+docker exec p2p_yzta_frontend curl http://backend:8000/
+# Expected: 200 OK
+
+# 4. Compose ağını yeniden oluştur
+docker compose down
+docker network prune
+docker compose up
+```
+
+---
+
+### 8. Dosya Yüklenmiş Ama Sorguda Görülmüyor
+
+**Sebep:**
+- Farklı `username` ile yükleme ve sorgu yapıldı
+
+**Çözüm:**
+
+```bash
+# Upload'da username koy
+curl -X POST http://localhost:8000/api/upload \
+  -F "files=@rapor.pdf" \
+  -F "username=ayni_kullanici"
+
+# Chat'te aynı username kullan
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "...",
+    "username": "ayni_kullanici"
+  }'
+```
+
+---
+
+## Performans İpuçları
+
+### Chunking'i Optimize Et
+```python
+# backend/app/core/config.py
+CHUNK_SIZE = 1000       # Artır: better context, more tokens
+CHUNK_OVERLAP = 100     # Artır: better edges, redundancy
+```
+
+### Retrieval'i Optimize Et
+```python
+# backend/app/core/config.py
+CHROMA_TOP_K = 8        # Artır: better recall, slower response
+RETRIEVER_MIN_RELEVANCE_SCORE = 0.10  # Azalt: more liberal matching
+```
+
+### Groq Timeout'ı Artır
+```bash
+# .env
+LLM_TIMEOUT_SECONDS=120
+```
+
+---
+
+## Başkileştirme (Deployment)
+
+### Production Checklist
+
+- [ ] `.env` dosyasını güvenli ortamdan oku (env vars, secret manager)
+- [ ] Docker image'ları private registry'e push et
+- [ ] `GROQ_API_KEY` rotasyonunu ayarla
+- [ ] ChromaDB volume backup'ını planla
+- [ ] Rate limiting ekle (upload, chat)
+- [ ] Error logging'i centralize et (Sentry, DataDog)
+- [ ] Health check endpoint'lerini monitor et
+
+---
+
+## Katkıda Bulunma
+
+1. Branch oluştur: `git checkout -b feature/yeni-ozellik`
+2. Değişiklik yap ve test et: `pytest tests/ -v`
+3. Commit et: `(feat) scope : Açıklamalar`
+4. PR aç
+
+---
+
+## Lisans
+
+MIT

@@ -3,9 +3,113 @@ import os
 import streamlit as st
 import requests
 
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000/api")
+# --- Dynamic Backend URL Discovery ---
+def get_backend_url():
+    """Determine the correct backend URL based on availability."""
+    if os.getenv("BASE_URL"):
+        return os.getenv("BASE_URL")
+    
+    # Try common ports: 8000 (Internal/Compose), 8010 (Agent Host Port)
+    urls = ["http://localhost:8000/api", "http://localhost:8010/api", "http://backend:8000/api"]
+    for url in urls:
+        try:
+            # Quick check (1s timeout)
+            requests.get(url.replace("/api", "/"), timeout=1.0)
+            return url
+        except:
+            continue
+    return "http://localhost:8010/api" # Default fallback
 
-st.set_page_config(page_title="Doküman Sohbet", page_icon="📄", layout="wide")
+BASE_URL = get_backend_url()
+
+st.set_page_config(page_title="P2P YZTA — Expert RAG", page_icon="🧬", layout="wide")
+
+# ── Tasarım ve CSS ────────────────────────────────────────────────────────────
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Ana Arka Plan */
+    .main {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    
+    /* Glassmorphism Sidebar - Light & Dark support */
+    section[data-testid="stSidebar"] {
+        background: rgba(255, 255, 255, 0.7) !important;
+        backdrop-filter: blur(15px);
+        border-right: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    @media (prefers-color-scheme: dark) {
+        section[data-testid="stSidebar"] {
+            background: rgba(20, 20, 20, 0.8) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        section[data-testid="stSidebar"] * {
+            color: #E0E0E0 !important;
+        }
+        .stMarkdown p {
+            color: #E0E0E0 !important;
+        }
+    }
+    
+    /* Modern Başlıklar */
+    h1 {
+        background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 700 !important;
+        letter-spacing: -1px;
+    }
+    
+    /* Kart Yapısı */
+    .stChatMessage {
+        border-radius: 15px;
+        margin-bottom: 10px;
+        border: 1px solid rgba(0,0,0,0.05);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+    }
+    
+    /* Akıl Yürütme Expander */
+    .stExpander {
+        border: none !important;
+        background: rgba(30, 60, 114, 0.08) !important;
+        border-radius: 12px !important;
+        margin-bottom: 10px;
+    }
+    
+    /* Buton İyileştirmeleri */
+    .stButton>button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        border: 1px solid rgba(0,0,0,0.1) !important;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        background-color: #1e3c72 !important;
+        color: white !important;
+    }
+    
+    /* Custom Title Bar */
+    .expert-badge {
+        background: #1e3c72;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        vertical-align: middle;
+        margin-left: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ── Session state başlangıç ───────────────────────────────────────────────────
 for key, default in [
@@ -21,10 +125,14 @@ for key, default in [
 def _load_user_files(username: str):
     """Backend'den kullanıcının daha önce yüklediği dosyaları çek."""
     try:
-        resp = requests.get(f"{BASE_URL}/files", params={"username": username}, timeout=10)
+        resp = requests.get(f"{BASE_URL}/files", params={"username": username}, timeout=30)
         if resp.status_code == 200:
             return resp.json().get("files", [])
     except requests.exceptions.ConnectionError:
+        pass
+    except requests.exceptions.Timeout:
+        pass
+    except requests.exceptions.RequestException:
         pass
     return []
 
@@ -39,7 +147,7 @@ if not st.session_state.username_set:
         if st.button("Giriş Yap", use_container_width=True) and name_input.strip():
             st.session_state.username = name_input.strip()
             st.session_state.username_set = True
-            st.session_state.uploaded_files_info = _load_user_files(name_input.strip())
+            st.session_state.uploaded_files_info = []
             st.rerun()
     st.stop()
 
@@ -50,6 +158,16 @@ with st.sidebar:
         for key in ["messages", "uploaded_files_info", "username", "username_set"]:
             st.session_state[key] = [] if key in ("messages", "uploaded_files_info") else ("" if key == "username" else False)
         st.rerun()
+
+    if st.button("Kayıtlı dosyaları yükle", use_container_width=True):
+        try:
+            with st.spinner("Kayıtlı dosyalar alınıyor..."):
+                st.session_state.uploaded_files_info = _load_user_files(st.session_state.username)
+            if not st.session_state.uploaded_files_info:
+                st.info("Bu kullanıcı için kayıtlı dosya bulunamadı.")
+            st.rerun()
+        except Exception:
+            st.warning("Kayıtlı dosyalar şu anda alınamadı. Sonradan tekrar deneyebilirsin.")
 
     st.divider()
     st.header("1. Doküman Yükle")
@@ -68,6 +186,7 @@ with st.sidebar:
             completed = 0
             total_files = len(uploaded_files)
             uploaded_results = []
+            upload_errors = []
 
             with st.spinner("İşleniyor..."):
                 with requests.post(
@@ -75,7 +194,7 @@ with st.sidebar:
                     files=files_to_send,
                     data={"username": st.session_state.get("username", "")},
                     stream=True,
-                    timeout=120,
+                    timeout=(10, None),
                 ) as resp:
                     for line in resp.iter_lines():
                         if not line:
@@ -97,7 +216,9 @@ with st.sidebar:
                             completed += 1
                             progress_bar.progress(min(completed / total_files, 1.0))
                         elif event_type == "error":
-                            stage_box.error(f"{chunk.get('filename', '')}: {chunk.get('detail', '')}")
+                            detail = f"{chunk.get('filename', '')}: {chunk.get('detail', '')}"
+                            upload_errors.append(detail)
+                            stage_box.error(detail)
                         elif event_type == "done":
                             progress_bar.progress(1.0)
 
@@ -115,10 +236,14 @@ with st.sidebar:
                         added += 1
                 st.success(f"{added} dosya yüklendi!")
                 st.rerun()
+            elif upload_errors:
+                st.error(f"{len(upload_errors)} dosya islenemedi. Detaylar yukarida.")
             else:
                 st.warning("Yükleme tamamlandı ama işlenecek dosya döndürülmedi.")
+        except requests.exceptions.Timeout:
+            st.error("Yükleme uzun sürdü. Backend hâlâ indeksliyor olabilir; lütfen biraz sonra tekrar dene.")
         except requests.exceptions.ConnectionError:
-            st.error("Backend'e ulaşılamadı (port 8000).")
+            st.error(f"Backend'e ulaşılamadı. Lütfen sunucunun çalıştığından emin olun. (Denenen URL: {BASE_URL})")
 
     # Yüklü dosyalar listesi + silme
     if st.session_state.uploaded_files_info:
@@ -176,19 +301,6 @@ with st.sidebar:
     else:
         selected_source = None
 
-    # Mimari akış bilgisi
-    st.divider()
-    with st.expander("RAG Mimarisi"):
-        st.markdown("""
-1. Doküman yükleme
-2. Metne çevirme
-3. Chunking
-4. Embedding oluşturma
-5. Chroma vektör DB kaydı
-6. Kullanıcı sorusu
-7. İlgili chunk'ları retrieve et
-8. Groq LLM ile cevap üret
-        """)
 
 # ── Ana alan ──────────────────────────────────────────────────────────────────
 header_col, clear_col = st.columns([6, 1])
@@ -206,6 +318,24 @@ for msg in st.session_state.messages:
         if msg.get("sources"):
             source_names = list({s.get("source_file", "") for s in msg["sources"] if s.get("source_file")})
             st.caption("Kaynak: " + " · ".join(f"📄 {n}" for n in source_names))
+        if msg.get("evaluation"):
+            ev = msg.get("evaluation", {})
+            st.caption(
+                f"Kalite | relevance: {ev.get('context_relevance')} | "
+                f"recall: {ev.get('context_recall')} | "
+                f"faithfulness: {ev.get('faithfulness')} | "
+                f"answer: {ev.get('answer_relevance')}"
+            )
+            st.caption(
+                f"Self-Eval | IsREL: {ev.get('IsREL')} | "
+                f"IsSUP: {ev.get('IsSUP')} | IsUSE: {ev.get('IsUSE')}"
+            )
+        if msg.get("retrieval"):
+            rv = msg.get("retrieval", {})
+            st.caption(
+                f"Retrieval | confidence: {rv.get('confidence_score')} | "
+                f"coverage: {rv.get('context_coverage')} | quality: {rv.get('retrieval_quality')}"
+            )
 
 # Yeni soru
 if prompt := st.chat_input("Dokümanlarla ilgili ne öğrenmek istersin?"):
@@ -213,7 +343,11 @@ if prompt := st.chat_input("Dokümanlarla ilgili ne öğrenmek istersin?"):
     st.session_state.messages.append({"role": "user", "content": prompt, "sources": []})
 
     if not st.session_state.uploaded_files_info:
-        reply = "Henüz doküman yüklemedin. Sol panelden dosya yükleyerek başlayabilirsin."
+        # Login akısında dosyalar bilincli olarak lazy yukleniyor; chat'te bir kez daha dene.
+        st.session_state.uploaded_files_info = _load_user_files(st.session_state.get("username", ""))
+
+    if not st.session_state.uploaded_files_info:
+        reply = "Henüz doküman görünmüyor. Sol panelden dosya yükleyebilir veya 'Kayıtlı dosyaları yükle' butonunu kullanabilirsin."
         with st.chat_message("assistant"):
             st.markdown(reply)
         st.session_state.messages.append({"role": "assistant", "content": reply, "sources": []})
@@ -227,42 +361,78 @@ if prompt := st.chat_input("Dokümanlarla ilgili ne öğrenmek istersin?"):
                 placeholder = st.empty()
                 full_response = ""
                 sources = []
+                evaluation = None
+                retrieval = None
 
-                with requests.post(
-                    f"{BASE_URL}/chat/stream",
-                    json=payload,
-                    stream=True,
-                    timeout=60,
-                ) as r:
-                    for line in r.iter_lines():
-                        if not line:
-                            continue
-                        line = line.decode("utf-8")
-                        if not line.startswith("data:"):
-                            continue
-                        raw = line[len("data:"):].strip()
-                        try:
-                            chunk = json.loads(raw)
-                        except Exception:
-                            continue
-                        if chunk.get("type") == "token":
-                            full_response += chunk.get("content", "")
-                            placeholder.markdown(full_response + "▌")
-                        elif chunk.get("type") == "sources":
-                            sources = chunk.get("content", [])
-                        elif chunk.get("type") == "error":
-                            full_response = f"Hata: {chunk.get('detail', 'Bilinmeyen hata')}"
+                with st.spinner("🔍 Dökümanlar taranıyor ve analiz ediliyor..."):
+                    with requests.post(
+                        f"{BASE_URL}/chat/stream",
+                        json=payload,
+                        stream=True,
+                        timeout=60,
+                    ) as r:
+                        for line in r.iter_lines():
+                            if not line:
+                                continue
+                            line = line.decode("utf-8")
+                            if not line.startswith("data:"):
+                                continue
+                            raw = line[len("data:"):].strip()
+                            try:
+                                chunk = json.loads(raw)
+                            except Exception:
+                                continue
 
-                placeholder.markdown(full_response)
+                            if chunk.get("type") == "token":
+                                full_response += chunk.get("content", "")
+                                
+                                # Master Level: Clean technical citations on-the-fly for cleaner UI
+                                import re
+                                display_text = re.sub(r"\[(?:Source|Kaynak|Doc|Doküman):\s*[^\]]+\]", "", full_response)
+                                
+                                if "Nihai Cevap:" in display_text:
+                                    display_text = display_text.split("Nihai Cevap:", 1)[1]
+                                elif "Düşünce Süreci:" in display_text:
+                                    display_text = "*(Analiz ediliyor...)*"
+                                
+                                placeholder.markdown(display_text.strip() + "▌")
+                            elif chunk.get("type") == "sources":
+                                sources = chunk.get("content", [])
+                            elif chunk.get("type") == "retrieval":
+                                retrieval = chunk.get("content", {})
+                            elif chunk.get("type") == "evaluation":
+                                evaluation = chunk.get("content", {})
+                            elif chunk.get("type") == "error":
+                                full_response = f"Hata: {chunk.get('detail', 'Bilinmeyen hata')}"
+
+                # Final formatting (Hide thoughts, show only final answer)
+                import re
+                final_main_text = re.sub(r"\[(?:Source|Kaynak|Doc|Doküman):\s*[^\]]+\]", "", full_response)
+                if "Nihai Cevap:" in final_main_text:
+                    final_main_text = final_main_text.split("Nihai Cevap:", 1)[1].split("Sources Table:", 1)[0].split("Kaynak Tablosu:", 1)[0].strip()
+                elif "Final Answer:" in final_main_text:
+                    final_main_text = final_main_text.split("Final Answer:", 1)[1].split("Sources Table:", 1)[0].split("Kaynak Tablosu:", 1)[0].strip()
+
+                placeholder.markdown(final_main_text.strip())
 
                 if sources:
                     source_names = list({s.get("source_file", "") for s in sources if s.get("source_file")})
                     st.caption("Kaynak: " + " · ".join(f"📄 {n}" for n in source_names))
 
+                if evaluation:
+                    st.caption(
+                        f"Kalite Skorları | "
+                        f"relevance: {evaluation.get('context_relevance')} | "
+                        f"faithfulness: {evaluation.get('faithfulness')} | "
+                        f"answer: {evaluation.get('answer_relevance')}"
+                    )
+
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": full_response,
+                "content": final_main_text,
                 "sources": sources,
+                "evaluation": evaluation,
+                "retrieval": retrieval,
             })
 
         except requests.exceptions.ConnectionError:

@@ -1,4 +1,6 @@
 venv/
+venv_host/
+data/
 uploads/
 __pycache__/
 *.pyc
