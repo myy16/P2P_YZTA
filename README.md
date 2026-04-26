@@ -1,6 +1,44 @@
 # P2P_YZTA — Kendi Dokümanlarınla Sohbet Et
 
-Bu uygulama, kullanıcıların sisteme yüklediği PDF, DOCX ve TXT dosyalarını analiz eden ve bu dokümanlar üzerinden yapay zeka ile sohbet edilmesini sağlayan bir RAG (Retrieval-Augmented Generation) projesidir.
+![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.56-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
+![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector_DB-6C3483?style=for-the-badge)
+![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-F54E00?style=for-the-badge)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+
+> Kullanıcıların sisteme yüklediği PDF, DOCX ve TXT dosyalarını analiz eden ve bu dokümanlar üzerinden yapay zeka ile sohbet edilmesini sağlayan bir **RAG (Retrieval-Augmented Generation)** projesidir.
+
+---
+
+## Mimari
+
+```mermaid
+graph TD
+    U([👤 Kullanıcı]) --> ST[🖥️ Streamlit Frontend]
+
+    ST -->|Dosya Yükleme| UP[POST /api/upload]
+    ST -->|Soru Sorma| CH[POST /api/chat/stream]
+    ST -->|Özetleme| SM[POST /api/summarize]
+    ST -->|Dosya Listeleme| FL[GET /api/files]
+
+    subgraph Backend [⚙️ FastAPI Backend]
+        UP --> PR[Parser\nPDF · DOCX · TXT]
+        PR --> CL[Cleaner\nMetin Temizleme]
+        CL --> CK[Chunker\n1000 char · 100 overlap]
+        CK --> EM[Embedder\nall-MiniLM-L6-v2]
+        EM --> DB[(ChromaDB\nVektör Veritabanı)]
+
+        CH --> HY[HyDE\nSorgu Zenginleştirme]
+        HY --> RT[Retriever\nSemantic Search]
+        DB --> RT
+        RT --> RR[Reranker]
+        RR --> LLM[🤖 Groq LLM\nLLaMA 3.3 70B]
+        LLM -->|SSE Stream| ST
+    end
+```
+
+---
 
 ## Temel Özellikler
 
