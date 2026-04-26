@@ -65,8 +65,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application source
 COPY . .
 
-# Create uploads directory (volume can be mounted over this)
-RUN mkdir -p uploads
+# Create required directories (volumes mount over these, ownership must be set first)
+RUN mkdir -p uploads data/chroma
 
 # Non-root user for security
 RUN adduser --disabled-password --gecos "" appuser \

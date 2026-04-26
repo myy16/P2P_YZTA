@@ -40,6 +40,12 @@ graph TD
 
 ---
 
+## Ekran Görüntüsü
+
+![Uygulama Arayüzü](docs/image.png)
+
+---
+
 ## Temel Özellikler
 
 * **Hızlı Dosya Yükleme:** PDF, DOCX, DOC ve TXT dosyalarını sürükle-bırak ile yükleme ve anında işleme.
@@ -319,6 +325,16 @@ P2P_YZTA/
         ├── test_rag_service.py
         └── test_api_integration.py
 ```
+
+---
+
+## Katkıda Bulunanlar
+
+| | İsim | Görev | LinkedIn |
+|---|------|-------|----------|
+| 👤 | **Kübra Güler** | Doküman İşleme Pipeline — Dosya yükleme endpoint'leri, PDF/DOCX/TXT parser, metin temizleme ve chunking stratejisi | [LinkedIn](https://www.linkedin.com/in/kubradguler/) |
+| 👤 | **Muhammet Yusuf Yılmaz** | RAG Engine — Embedding, ChromaDB, HyDE + reranking ile gelişmiş retrieval, LLM entegrasyonu | [LinkedIn](https://www.linkedin.com/in/myy1647/) |
+| 👤 | **Feyza Aydın** | Frontend & Entegrasyon — Streamlit arayüzü, streaming response, README ve demo | [LinkedIn](https://www.linkedin.com/in/feyzaxaydin/?locale=tr) |
 
 ---
 
@@ -674,13 +690,3 @@ LLM_TIMEOUT_SECONDS=120
 ## Lisans
 
 MIT
-
----
-
-## Katkıda Bulunanlar
-
-| | İsim | Görev | LinkedIn |
-|---|------|-------|----------|
-| 👤 | **Kübra Güler** | Doküman İşleme Pipeline — Dosya yükleme endpoint'leri, PDF/DOCX/TXT parser, metin temizleme ve chunking stratejisi | [LinkedIn](https://www.linkedin.com/in/kubradguler/) |
-| 👤 | **Muhammet Yusuf Yılmaz** | RAG Engine — Embedding, ChromaDB, HyDE + reranking ile gelişmiş retrieval, LLM entegrasyonu | [LinkedIn](https://www.linkedin.com/in/myy1647/) |
-| 👤 | **Feyza Aydın** | Frontend & Entegrasyon — Streamlit arayüzü, streaming response, README ve demo | [LinkedIn](https://www.linkedin.com/in/feyzaxaydin/?locale=tr) |
