@@ -1,0 +1,19 @@
+backend/venv/
+backend/uploads/
+backend/data/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+.history/
+chat_doc.md
+.venv-win
+.venv
+venv_host
+wheels
+backend.log
+
+# Local machine startup/test scripts that may include host-specific secrets.
+start_backend.bat
+backend/start_host_backend.bat
+backend/test_groq.py

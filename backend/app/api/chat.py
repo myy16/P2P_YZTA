@@ -1,0 +1,71 @@
+import json
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from app.core.config import CHROMA_TOP_K
+from app.core.rag_service import get_rag_service
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    file_id: Optional[str] = None
+    source_file: Optional[str] = None
+    top_k: int = Field(default=CHROMA_TOP_K, ge=1, le=20)
+    username: Optional[str] = None
+
+
+@router.post("/chat")
+def chat(request: ChatRequest):
+    try:
+        service = get_rag_service()
+        return service.answer_question(
+            question=request.question,
+            top_k=request.top_k,
+            file_id=request.file_id,
+            source_file=request.source_file,
+            username=request.username if request.username else None,
+        )
+    except RuntimeError as exc:
+        logger.warning("Chat request failed due to runtime dependency issue: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error while handling /api/chat")
+        raise HTTPException(status_code=500, detail="Internal server error.") from exc
+
+
+@router.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    try:
+        service = get_rag_service()
+        async def safe_stream():
+            try:
+                # Use a timeout-aware iteration if needed, but for now simple manual yield
+                for event in service.answer_question_stream(
+                    question=request.question,
+                    top_k=request.top_k,
+                    file_id=request.file_id,
+                    source_file=request.source_file,
+                    username=request.username if request.username else None,
+                ):
+                    yield event
+            except RuntimeError as exc:
+                logger.warning("Streaming chat failed: %s", exc)
+                yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            except Exception as exc:
+                logger.exception("Unexpected error while streaming")
+                yield f"data: {json.dumps({'type': 'error', 'detail': 'Internal server error.'})}\n\n"
+
+        return StreamingResponse(safe_stream(), media_type="text/event-stream")
+    except RuntimeError as exc:
+        logger.warning("Unable to initialize streaming chat: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error while initializing /api/chat/stream")
+        raise HTTPException(status_code=500, detail="Internal server error.") from exc
