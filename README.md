@@ -10,6 +10,8 @@
 
 > Kullanıcıların sisteme yüklediği PDF, DOCX ve TXT dosyalarını analiz eden ve bu dokümanlar üzerinden yapay zeka ile sohbet edilmesini sağlayan bir **RAG (Retrieval-Augmented Generation)** projesidir.
 
+> 🚀 **[Canlı Demo → frontend-production-6f279.up.railway.app](https://frontend-production-6f279.up.railway.app)**
+
 ---
 
 ## Mimari
@@ -666,6 +668,12 @@ LLM_TIMEOUT_SECONDS=120
 ---
 
 ## Başkileştirme (Deployment)
+
+Bu proje **Railway** üzerinde canlıya alınmıştır:
+
+| Servis | URL |
+|--------|-----|
+| Frontend (Streamlit) | https://frontend-production-6f279.up.railway.app |
 
 ### Production Checklist
 
